@@ -185,45 +185,55 @@
 <body>
     <div id="ui-layer">
         <div id="top-bar">
-            <div style="font-size: 18px; color: var(--accent);">KINETIC FORGE <span
-                    style="font-size:10px; color:#666;">// STRUCTURAL PHYSICS</span></div>
-            <div>
-                <button class="mode-btn active" onclick="setMode('FORGE')">Forge</button>
-                <button class="mode-btn" onclick="setMode('COMBAT')">Combat Test</button>
-            </div>
+            <div style="font-size: 18px; color: var(--accent);">动力铸造 <span style="font-size:10px; color:#666;">//
+                    结构物理</span></div>
+            <div id="level-display"
+                style="font-size: 14px; color: #fff; font-weight: bold; border: 1px solid #444; padding: 4px 10px; background: #222;">
+                关卡 1 / 5</div>
+            <div style="width:100px;"></div> <!-- Spacer -->
         </div>
 
         <div id="stats-panel">
-            <div class="stat-row"><span>Total Mass:</span> <span id="s-mass" class="stat-val">0</span> kg</div>
-            <div class="stat-row"><span>Length:</span> <span id="s-len" class="stat-val">0</span> m</div>
-            <div class="stat-row"><span>Moment of Inertia (I):</span> <span id="s-moi" class="stat-val">0</span> kg·m²
+            <div class="stat-row"><span>总质量:</span> <span id="s-mass" class="stat-val">0</span> kg</div>
+            <div class="stat-row"><span>长度:</span> <span id="s-len" class="stat-val">0</span> m</div>
+            <div class="stat-row"><span>转动惯量 (I):</span> <span id="s-moi" class="stat-val">0</span> kg·m²
             </div>
             <div style="margin:5px 0; border-bottom:1px solid #333;"></div>
-            <div class="stat-row"><span>Logic:</span> <span class="stat-val" style="color:#aaa;">Torque > Integrity =
-                    BREAK</span></div>
-            <div class="stat-row"><span>Max Torque Applied:</span> <span id="s-torque" class="stat-val">0</span> Nm
+            <div class="stat-row"><span>物理逻辑:</span> <span class="stat-val" style="color:#aaa;">扭矩 > 结构强度 =
+                    断裂</span></div>
+            <div class="stat-row"><span>最大力量:</span> <span id="s-strength" class="stat-val">0</span> Nm</div>
+            <div class="stat-row"><span>当前扭矩:</span> <span id="s-torque" class="stat-val">0</span> Nm
             </div>
-            <div class="stat-row"><span>Peak Stress:</span> <span id="s-stress" class="stat-val">0</span> Nm</div>
-            <div id="s-warning" style="color:yellow; text-align:center; margin-top:5px; display:none;">STRUCTURAL
-                WARNING</div>
+            <div class="stat-row"><span>结构应力:</span> <span id="s-stress" class="stat-val">0</span> Nm</div>
+            <div class="stat-row"><span>秒伤 (DPS):</span> <span id="s-dps" class="stat-val"
+                    style="color:#e67e22">0</span></div>
+            <div id="s-warning" style="color:yellow; text-align:center; margin-top:5px; display:none;">结构强度
+                警告</div>
         </div>
 
         <div id="forge-overlay">
-            <div style="text-align:center; color:#888; font-size:10px;">MATERIALS</div>
+            <div style="text-align:center; color:#888; font-size:10px;">材料库</div>
             <div class="inventory-row" id="inv-container"></div>
             <div style="height:1px; background:#444; margin:5px 0;"></div>
-            <div style="text-align:center; color:#888; font-size:10px;">SWORD ASSEMBLY (LEFT=HANDLE)</div>
+            <div style="text-align:center; color:#888; font-size:10px;">剑身组装 (左侧=剑柄)</div>
             <div class="inventory-row" id="slot-container"></div>
+
+            <div style="margin-top: 15px; text-align: center; display:flex; justify-content:center; gap:10px;">
+                <button class="mode-btn"
+                    style="background:#e67e22; font-size:16px; padding:10px 30px; border:1px solid #d35400;"
+                    onclick="setMode('COMBAT')">开始战斗</button>
+
+                <button class="mode-btn"
+                    style="background:#555; font-size:16px; padding:10px 20px; border:1px solid #777;"
+                    onclick="resetSim()">重置</button>
+            </div>
         </div>
 
         <div id="combat-overlay" class="hidden">
             <!-- Combat specific overlay content -->
         </div>
 
-        <!-- Persistent UI -->
-        <div style="position: absolute; bottom: 20px; right: 20px; pointer-events: auto;">
-            <button class="mode-btn" style="background:#e74c3c;" onclick="resetSim()">Reset Position</button>
-        </div>
+        <!-- Persistent UI Removed -->
     </div>
     <canvas id="gameCanvas"></canvas>
 
@@ -235,7 +245,7 @@
         // Physics Config
         const PX_PER_METER = 50.0; // 50 pixels = 1 meter
         const DT = 1 / 60;
-        const MAX_TORQUE = 800; // Anime Super Strength
+        const MAX_TORQUE = 500; // Anime Super Strength
         const K_P = 2000; // Super Stiffness 
         const K_D = 25;  // Damping increased slightly for stability
 
@@ -252,15 +262,15 @@
 
         // Materials
         const MATERIALS = {
-            'wood': { name: 'Wood Beam', mass: 1.5, integrity: 250, sharpness: 0.8, color: '#8B4513', w: 10, h: 40, desc: 'Light, Weak' },
-            'iron': { name: 'Heavy Iron', mass: 3.0, integrity: 2000, sharpness: 2.0, color: '#708090', w: 30, h: 30, desc: 'Balanced, Durable' },
-            'gold': { name: 'Soft Gold', mass: 6.0, integrity: 400, sharpness: 1.0, color: '#FFD700', w: 35, h: 25, desc: 'Heavy, Soft' },
-            'glass': { name: 'Obsidian Shard', mass: 0.6, integrity: 20, sharpness: 2.5, color: '#00FFFF', w: 20, h: 50, desc: 'Fragile, Sharp' }
+            'wood': { name: '木梁', mass: 1.5, integrity: 250, sharpness: 0.8, color: '#8B4513', w: 10, h: 40, desc: '轻便, 脆弱' },
+            'iron': { name: '重铁', mass: 3.0, integrity: 1000, sharpness: 1.5, color: '#708090', w: 30, h: 30, desc: '平衡, 耐用' },
+            'gold': { name: '软金', mass: 6.0, integrity: 400, sharpness: 1.0, color: '#FFD700', w: 35, h: 25, desc: '沉重, 质软' },
+            'glass': { name: '碎片', mass: 0.6, integrity: 50, sharpness: 3.5, color: '#00FFFF', w: 20, h: 50, desc: '易碎, 极锐' }
         };
 
         // --- STATE ---
         let GAME_MODE = 'FORGE';
-        let swordSlots = [MATERIALS['wood'], MATERIALS['wood'], MATERIALS['iron'], MATERIALS['gold'], MATERIALS['glass']]; // Default
+        let swordSlots = [MATERIALS['wood'], null, null, null, null]; // Start with just a handle
 
         // Physics State
         let player = {
@@ -278,6 +288,7 @@
 
         let currentStats = { mass: 0, I: 0, peakStress: 0 };
         let simStartTime = 0; // For grace period
+        let dpsHistory = []; // DPS Tracking
 
         // Input
         let mouse = { x: 0, y: 0 };
@@ -317,12 +328,12 @@
             CANVAS.height = window.innerHeight;
             // Default position, can be moved
             if (!player.x) {
-                player.x = CANVAS.width * 0.4;
-                player.y = CANVAS.height * 0.6;
+                player.x = CANVAS.width * 0.45;
+                player.y = CANVAS.height * 0.5;
             }
             // Move enemy closer
-            enemy.x = CANVAS.width * 0.65;
-            enemy.y = CANVAS.height * 0.6;
+            enemy.x = CANVAS.width * 0.45 + 50;
+            enemy.y = CANVAS.height * 0.5;
         }
 
         function setupUI() {
@@ -341,9 +352,9 @@
             const showTip = (e, mat) => {
                 tooltip.style.display = 'block';
                 tooltip.innerHTML = `<strong style="color:${mat.color}; font-size:12px;">${mat.name}</strong><br>
-                                    <span style="color:#aaa">Mass:</span> ${mat.mass} kg<br>
-                                    <span style="color:#aaa">Integrity:</span> ${mat.integrity}<br>
-                                    <span style="color:#aaa">Sharpness:</span> ${mat.sharpness}<br>
+                                    <span style="color:#aaa">质量:</span> ${mat.mass} kg<br>
+                                    <span style="color:#aaa">强度:</span> ${mat.integrity}<br>
+                                    <span style="color:#aaa">锋利:</span> ${mat.sharpness}<br>
                                     <em style="color:#888; margin-top:4px; display:block;">${mat.desc}</em>`;
                 moveTip(e);
             };
@@ -409,34 +420,60 @@
             renderSlots();
         }
 
+        let currentLevel = 1;
+        const MAX_LEVELS = 5;
+
         function renderSlots() {
             const slots = document.getElementById('slot-container').children;
             for (let i = 0; i < 5; i++) {
                 const mat = swordSlots[i];
                 const el = slots[i];
+
                 // Reset classes
                 el.className = 'module-item';
-                if (mat) {
+                el.style.opacity = '1';
+                el.style.pointerEvents = 'auto';
+                el.style.borderStyle = 'solid';
+
+                if (i >= currentLevel) {
+                    // LOCKED SLOT
+                    el.classList.add('locked');
+                    el.style.opacity = '0.3';
+                    el.style.pointerEvents = 'none';
+                    el.style.borderStyle = 'dotted';
+                    el.style.borderColor = '#555';
+                    el.innerHTML = '<span style="color:#555; font-size:9px;">未解锁</span>';
+                    // Ensure locked slots are empty in logic
+                    if (swordSlots[i]) swordSlots[i] = null;
+                } else if (mat) {
+                    // FILLED SLOT
                     const key = Object.keys(MATERIALS).find(k => MATERIALS[k] === mat);
                     el.classList.add(`mod-${key}`);
-                    el.style.borderStyle = 'solid';
                     el.innerHTML = `<div class="module-icon"></div><div>${mat.name.split(' ')[0]}</div>`;
                 } else {
+                    // EMPTY SLOT
                     el.style.borderStyle = 'dashed';
-                    el.innerHTML = '<span style="color:#444">Empty</span>';
+                    el.innerHTML = '<span style="color:#444">空</span>';
                 }
             }
         }
 
+        let combatTimer = 0;
+        const COMBAT_DURATION = 15; // Seconds
+
         function setMode(m) {
             GAME_MODE = m;
-            document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-            document.querySelector(`button[onclick="setMode('${m}')"]`).classList.add('active');
 
+            // Show/Hide Overlays
             document.getElementById('forge-overlay').classList.toggle('hidden', m !== 'FORGE');
             document.getElementById('combat-overlay').classList.toggle('hidden', m !== 'COMBAT');
 
-            if (m === 'COMBAT') resetSim();
+            if (m === 'COMBAT') {
+                resetSim();
+                // Reset Enemy HP for the fight
+                enemy.hp = enemy.maxHp;
+                combatTimer = COMBAT_DURATION;
+            }
         }
 
         function resetSim() {
@@ -485,6 +522,17 @@
         }
 
         function update() {
+            // Timer Logic
+            if (GAME_MODE === 'COMBAT') {
+                if (combatTimer > 0) {
+                    combatTimer -= DT;
+                    if (combatTimer <= 0) {
+                        combatTimer = 0;
+                        handleCombatFailure();
+                    }
+                }
+            }
+
             // WASD Movement
             const moveSpeed = 5;
             if (keys.w) player.y -= moveSpeed;
@@ -517,11 +565,15 @@
             currentStats.mass = totalMass;
 
             // 3. PD Controller (Torque)
-            let torque = (K_P * diff) - (K_D * player.velocity);
+            const strength = getPlayerStrength();
+            const K_P_DYNAMIC = strength.kp;
+            const MAX_TORQUE_DYNAMIC = strength.maxTorque;
+
+            let torque = (K_P_DYNAMIC * diff) - (K_D * player.velocity);
 
             // Clamp Torque (Human Limit)
-            if (torque > MAX_TORQUE) torque = MAX_TORQUE;
-            if (torque < -MAX_TORQUE) torque = -MAX_TORQUE;
+            if (torque > MAX_TORQUE_DYNAMIC) torque = MAX_TORQUE_DYNAMIC;
+            if (torque < -MAX_TORQUE_DYNAMIC) torque = -MAX_TORQUE_DYNAMIC;
             player.torque = torque;
 
             // 4. Integration
@@ -622,9 +674,25 @@
             checkCollisions();
         }
 
+
+        function updateDPS(dmg) {
+            const now = Date.now();
+            dpsHistory.push({ t: now, d: dmg });
+        }
+
+        function getDPS() {
+            const now = Date.now();
+            dpsHistory = dpsHistory.filter(e => now - e.t < 1000); // Clean up
+            let total = 0;
+            dpsHistory.forEach(e => total += e.d);
+            return total;
+        }
+
         // --- COLLISION ---
         function checkCollisions() {
-            if (enemy.hp <= 0) return;
+            // In Forge mode, we always check collisions for DPS test.
+            // In Combat mode, ONLY check if enemy is alive.
+            if (GAME_MODE === 'COMBAT' && enemy.hp <= 0) return;
 
             // Simple "Swept" collision to prevent tunneling
             // We check if the arc traced by the node intersects the enemy box
@@ -659,18 +727,29 @@
         function applyDamage(node) {
             if (enemy.hitFlash > 0) return; // Debounce
 
-            const v = Math.abs(player.velocity * node.r); // Impact velocity
-            const ke = 0.5 * node.mat.mass * v * v;
-            const dmg = ke * node.mat.sharpness * 0.05; // Tuned scale
+            const v = Math.abs(player.velocity * node.r); // Impact velocity (Tangential)
+
+            // BALANCE CHANGE: Use Momentum (mv) instead of Kinetic Energy (0.5mv^2)
+            // This buffs heavy slow weapons and nerfs light fast weapons.
+            const momentum = node.mat.mass * v;
+
+            // Damage = Momentum * Sharpness * Scaling
+            // Scaling reduced from 10.0 -> 3.5 (Final Balance) -> User requested 1.0 (Manual Edit)
+            // PRESERVING USER EDIT: 1.0
+            const dmg = momentum * node.mat.sharpness * 1.0;
 
             if (dmg > 2) {
-                enemy.hp -= dmg;
+                // ALWAYS show feedback & DPS
+                updateDPS(dmg);
+                const isForge = GAME_MODE === 'FORGE';
+
+                if (!isForge) enemy.hp -= dmg;
                 enemy.hitFlash = 10; // Frames of invuln/flash
 
                 // Floating Text
                 const el = document.createElement('div');
                 el.innerText = Math.floor(dmg);
-                el.style.cssText = `position:absolute; left:${enemy.x}px; top:${enemy.y - 50}px; color:#fff; font-weight:bold; font-size:20px; pointer-events:none; transition:all 1s; z-index:99;`;
+                el.style.cssText = `position:absolute; left:${enemy.x}px; top:${enemy.y - 50}px; color:${isForge ? '#aaa' : '#fff'}; font-weight:bold; font-size:20px; pointer-events:none; transition:all 1s; z-index:99;`;
                 document.body.appendChild(el);
                 setTimeout(() => {
                     el.style.transform = 'translateY(-50px) scale(1.5)';
@@ -682,8 +761,40 @@
                 player.velocity *= 0.6;
                 // Visual
                 if (dmg > 50) canvasShake = 5;
+
+                // CHECK VICTORY (Only in Combat)
+                if (!isForge && enemy.hp <= 0) {
+                    handleLevelComplete();
+                }
             }
         }
+
+        function handleLevelComplete() {
+            if (currentLevel < MAX_LEVELS) {
+                alert(`关卡 ${currentLevel} 完成！解锁第 ${currentLevel + 1} 个插槽...`);
+                currentLevel++;
+            } else {
+                alert("即身成圣！剑神！(游戏循环重置)");
+                currentLevel = 1;
+            }
+
+            // Update UI
+            document.getElementById('level-display').innerText = `关卡 ${currentLevel} / ${MAX_LEVELS}`;
+
+            // Unlock next slot logic is handled by renderSlots() which checks currentLevel
+            renderSlots();
+
+            // Reset Game for next level
+            setMode('FORGE'); // Force back to forge to equip new slot
+
+            // Scale Enemy
+            enemy.maxHp = 500 + (currentLevel * 1000); // Scale difficulty
+            enemy.hp = enemy.maxHp;
+
+            // Reset sword position
+            resetSim();
+        }
+
 
         function updateDebris() {
             debris.forEach(d => {
@@ -698,11 +809,42 @@
         // --- DRAW ---
         let canvasShake = 0;
 
+        // Level Scaling
+        const BASE_TORQUE = 500;
+        const BASE_KP = 2000;
+
+        function getPlayerStrength() {
+            // SCALING: Buff strength significantly per level to handle heavier weapons
+            // Level 1: 800
+            // Level 5: 800 + 4*600 = 3200 (4x Strength)
+            return {
+                maxTorque: BASE_TORQUE + (currentLevel - 1) * 600,
+                kp: BASE_KP + (currentLevel - 1) * 800
+            };
+        }
+
+        function handleCombatFailure() {
+            alert("时间耗尽！任务失败。\n退回至关卡 1。");
+            currentLevel = 1;
+            // Update UI
+            document.getElementById('level-display').innerText = `关卡 ${currentLevel} / ${MAX_LEVELS}`;
+            renderSlots();
+            setMode('FORGE');
+        }
+
         function draw() {
             // Reset Transform
             CTX.setTransform(1, 0, 0, 1, 0, 0);
             CTX.fillStyle = '#0f1215';
             CTX.fillRect(0, 0, CANVAS.width, CANVAS.height);
+
+            // Draw Timer (Background)
+            if (GAME_MODE === 'COMBAT') {
+                CTX.textAlign = 'center';
+                CTX.font = 'bold 40px "Courier New"';
+                CTX.fillStyle = combatTimer < 10 ? '#e74c3c' : '#34495e'; // Red if low time
+                CTX.fillText(combatTimer.toFixed(1), CANVAS.width / 2, 80);
+            }
 
             // Shake
             if (canvasShake > 0) {
@@ -724,15 +866,46 @@
             document.getElementById('s-mass').innerText = currentStats.mass.toFixed(1);
             document.getElementById('s-len').innerText = (currentStats.len || 0).toFixed(2);
             document.getElementById('s-moi').innerText = currentStats.I.toFixed(2);
+            document.getElementById('s-strength').innerText = getPlayerStrength().maxTorque;
             document.getElementById('s-torque').innerText = Math.abs(player.torque).toFixed(0);
             document.getElementById('s-stress').innerText = Math.floor(currentStats.peakStress);
+            document.getElementById('s-dps').innerText = Math.floor(getDPS());
 
-            // Player/Pivot
-            CTX.fillStyle = '#3498db';
-            CTX.beginPath(); CTX.arc(player.x, player.y, 8, 0, Math.PI * 2); CTX.fill();
+            // Player/Pivot (Character Visuals)
+
+            // 1. Body (Static relative to Pivot)
+            // Pivot is at player.x, player.y. This is the SHOULDER.
+            // Body should be below it.
+
+            CTX.save();
+            CTX.translate(player.x, player.y);
+
+            // Draw Body (Suit)
+            CTX.fillStyle = '#2c3e50';
+            CTX.fillRect(-15, -10, 30, 40); // Chest
+
+            // Draw Head
+            CTX.fillStyle = '#34495e';
+            CTX.beginPath(); CTX.arc(0, -25, 12, 0, Math.PI * 2); CTX.fill(); // Head
+            CTX.fillStyle = '#3498db'; // Visor
+            CTX.fillRect(-8, -28, 16, 6);
+
+            // Draw Arms (Holding the Pivot)
+            CTX.strokeStyle = '#7f8c8d';
+            CTX.lineWidth = 6;
+            // Left Arm
+            CTX.beginPath(); CTX.moveTo(-15, 0); CTX.lineTo(0, 0); CTX.stroke();
+            // Right Arm
+            CTX.beginPath(); CTX.moveTo(15, 0); CTX.lineTo(0, 0); CTX.stroke();
+
+            CTX.restore();
+
+            // The Pivot Point itself (Joint)
+            CTX.fillStyle = '#e67e22'; // Interaction Point Color
+            CTX.beginPath(); CTX.arc(player.x, player.y, 6, 0, Math.PI * 2); CTX.fill();
 
             // Ghost Cursor
-            CTX.strokeStyle = 'rgba(52, 152, 219, 0.3)';
+            CTX.strokeStyle = 'rgba(230, 126, 34, 0.3)';
             CTX.lineWidth = 1;
             CTX.setLineDash([5, 5]);
             CTX.beginPath(); CTX.moveTo(player.x, player.y);
@@ -786,11 +959,48 @@
             });
             CTX.globalAlpha = 1;
 
-            // Enemy
+            // Enemy (Training Bot Visuals)
             if (enemy.hp > 0) {
-                CTX.fillStyle = enemy.hitFlash > 0 ? '#fff' : '#c0392b';
-                if (enemy.hitFlash > 0) enemy.hitFlash--;
-                CTX.fillRect(enemy.x - enemy.w / 2, enemy.y - enemy.h / 2, enemy.w, enemy.h);
+                const isHit = enemy.hitFlash > 0;
+                if (isHit) enemy.hitFlash--;
+
+                CTX.save();
+                CTX.translate(enemy.x, enemy.y);
+
+                // Colors
+                const bodyColor = isHit ? '#fff' : '#2c3e50'; // Dark Grey
+                const armorColor = isHit ? '#fff' : '#c0392b'; // Red Armor
+                const eyeColor = isHit ? '#fff' : '#e74c3c'; // Glowing Red Eye
+
+                // 1. Legs (Simple stands)
+                CTX.fillStyle = '#1a1a1a';
+                CTX.fillRect(-20, 30, 10, 20); // Left Leg
+                CTX.fillRect(10, 30, 10, 20);  // Right Leg
+
+                // 2. Main Body (The Hitbox area mostly)
+                CTX.fillStyle = bodyColor;
+                CTX.fillRect(-enemy.w / 2, -enemy.h / 2, enemy.w, enemy.h);
+
+                // 3. Armor Plates (Chest)
+                CTX.fillStyle = armorColor;
+                CTX.fillRect(-enemy.w / 2 + 5, -10, enemy.w - 10, 30); // Chest Plate
+
+                // 4. Head
+                CTX.fillStyle = bodyColor;
+                CTX.beginPath();
+                CTX.arc(0, -enemy.h / 2 - 15, 15, 0, Math.PI * 2);
+                CTX.fill();
+
+                // 5. Eye (Cyclops)
+                CTX.fillStyle = eyeColor;
+                CTX.shadowColor = eyeColor;
+                CTX.shadowBlur = 10;
+                CTX.beginPath();
+                CTX.arc(0, -enemy.h / 2 - 15, 5, 0, Math.PI * 2);
+                CTX.fill();
+                CTX.shadowBlur = 0; // Reset glow
+
+                CTX.restore();
 
                 // HP Bar
                 CTX.fillStyle = '#444';
