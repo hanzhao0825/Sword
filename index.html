@@ -263,7 +263,7 @@
         // Materials
         const MATERIALS = {
             'wood': { name: '木梁', mass: 1.5, integrity: 250, sharpness: 0.8, color: '#8B4513', w: 10, h: 40, desc: '轻便, 脆弱' },
-            'iron': { name: '重铁', mass: 3.0, integrity: 1000, sharpness: 1.5, color: '#708090', w: 30, h: 30, desc: '平衡, 耐用' },
+            'iron': { name: '重铁', mass: 3.0, integrity: 600, sharpness: 1.2, color: '#708090', w: 30, h: 30, desc: '平衡, 耐用' },
             'gold': { name: '软金', mass: 6.0, integrity: 400, sharpness: 1.0, color: '#FFD700', w: 35, h: 25, desc: '沉重, 质软' },
             'glass': { name: '碎片', mass: 0.6, integrity: 50, sharpness: 3.5, color: '#00FFFF', w: 20, h: 50, desc: '易碎, 极锐' }
         };
@@ -298,10 +298,29 @@
         function init() {
             resize();
             window.addEventListener('resize', resize);
+
+            // Mouse
             window.addEventListener('mousemove', e => {
                 mouse.x = e.clientX;
                 mouse.y = e.clientY;
             });
+
+            // Touch (Aiming - Right Side of Screen)
+            window.addEventListener('touchmove', e => {
+                // Prevent default scrolling
+                if (e.target === CANVAS) e.preventDefault();
+
+                for (let i = 0; i < e.touches.length; i++) {
+                    const t = e.touches[i];
+                    // If touch is on right half, it's aiming
+                    if (t.clientX > window.innerWidth / 2) {
+                        mouse.x = t.clientX;
+                        mouse.y = t.clientY;
+                    }
+                }
+            }, { passive: false });
+
+            // Keyboard
             window.addEventListener('keydown', e => {
                 if (e.key === 'w' || e.key === 'W') keys.w = true;
                 if (e.key === 'a' || e.key === 'A') keys.a = true;
@@ -315,12 +334,77 @@
                 if (e.key === 'd' || e.key === 'D') keys.d = false;
             });
 
+            // Joystick Setup
+            setupJoystick();
+
             // UI Setup
             setupUI();
             rebuildSword();
             resetSim();
 
             requestAnimationFrame(loop);
+        }
+
+        // Joystick State
+        let joystick = { active: false, x: 0, y: 0, originX: 0, originY: 0, dx: 0, dy: 0 };
+
+        function setupJoystick() {
+            // Touch Start: Check for left side touch
+            window.addEventListener('touchstart', e => {
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                    const t = e.changedTouches[i];
+                    if (t.clientX < window.innerWidth / 2) {
+                        joystick.active = true;
+                        joystick.id = t.identifier;
+                        joystick.originX = t.clientX;
+                        joystick.originY = t.clientY;
+                        joystick.x = t.clientX;
+                        joystick.y = t.clientY;
+                        joystick.dx = 0;
+                        joystick.dy = 0;
+                    }
+                }
+            }, { passive: false });
+
+            // Touch Move: Update Knob
+            window.addEventListener('touchmove', e => {
+                if (!joystick.active) return;
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                    const t = e.changedTouches[i];
+                    if (t.identifier === joystick.id) {
+                        joystick.x = t.clientX;
+                        joystick.y = t.clientY;
+
+                        // Limit radius
+                        const maxR = 50;
+                        let dx = joystick.x - joystick.originX;
+                        let dy = joystick.y - joystick.originY;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist > maxR) {
+                            const angle = Math.atan2(dy, dx);
+                            dx = Math.cos(angle) * maxR;
+                            dy = Math.sin(angle) * maxR;
+                            joystick.x = joystick.originX + dx;
+                            joystick.y = joystick.originY + dy;
+                        }
+
+                        // Normalized Input (-1 to 1)
+                        joystick.dx = dx / maxR;
+                        joystick.dy = dy / maxR;
+                    }
+                }
+            }, { passive: false });
+
+            // Touch End: Reset
+            window.addEventListener('touchend', e => {
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                    if (e.changedTouches[i].identifier === joystick.id) {
+                        joystick.active = false;
+                        joystick.dx = 0;
+                        joystick.dy = 0;
+                    }
+                }
+            });
         }
 
         function resize() {
@@ -334,6 +418,36 @@
             // Move enemy closer
             enemy.x = CANVAS.width * 0.45 + 50;
             enemy.y = CANVAS.height * 0.5;
+        }
+
+        // Enhanced Inventory Interaction (Click to Select)
+        let selectedMaterial = null;
+
+        function updateSelectionVisuals() {
+            // Highlight selected inventory item
+            const items = document.querySelectorAll('.module-item');
+            items.forEach(el => {
+                const name = el.innerText;
+                if (selectedMaterial && name === selectedMaterial.name.split(' ')[0]) {
+                    el.style.border = '2px solid #fff';
+                    el.style.transform = 'scale(1.1)';
+                } else {
+                    el.style.border = '1px solid #555';
+                    el.style.transform = 'scale(1)';
+                }
+            });
+
+            // Highlight valid slots if something is selected
+            const slots = document.querySelectorAll('.slot');
+            slots.forEach((el, i) => {
+                if (i < currentLevel) {
+                    if (selectedMaterial) {
+                        el.style.borderColor = '#2ecc71'; // Green hint
+                    } else {
+                        el.style.borderColor = '#444';
+                    }
+                }
+            });
         }
 
         function setupUI() {
@@ -381,60 +495,68 @@
                 inv.appendChild(el);
             });
 
-            // Slots
-            slots.innerHTML = ''; // Clear prev
-            for (let i = 0; i < 5; i++) {
-                const el = document.createElement('div');
-                el.className = 'module-item';
-                el.style.borderStyle = 'dashed';
-                el.dataset.idx = i;
-                el.ondragover = (e) => e.preventDefault();
-                el.ondrop = (e) => {
-                    e.preventDefault();
-                    const key = e.dataTransfer.getData('mat');
-                    swordSlots[i] = MATERIALS[key];
-                    renderSlots();
-                    rebuildSword();
-                    // Refire enter to show tooltip for new item immediately
-                    if (MATERIALS[key]) showTip(e, MATERIALS[key]);
-                };
-                el.onclick = () => {
-                    swordSlots[i] = null;
-                    renderSlots();
-                    rebuildSword();
-                    hideTip();
-                };
-
-                el.onmousemove = (e) => {
-                    if (swordSlots[i]) {
-                        if (tooltip.style.display === 'none') showTip(e, swordSlots[i]);
-                        moveTip(e);
-                    } else {
-                        hideTip();
-                    }
-                };
-                el.onmouseleave = hideTip;
-
-                slots.appendChild(el);
-            }
+            // Slots - Delegated to renderSlots()
             renderSlots();
         }
+
 
         let currentLevel = 1;
         const MAX_LEVELS = 5;
 
         function renderSlots() {
-            const slots = document.getElementById('slot-container').children;
-            for (let i = 0; i < 5; i++) {
-                const mat = swordSlots[i];
-                const el = slots[i];
+            const slotContainer = document.getElementById('slot-container');
+            slotContainer.innerHTML = ''; // Clear and Re-render
 
-                // Reset classes
+            for (let i = 0; i < 5; i++) {
+                const el = document.createElement('div');
                 el.className = 'module-item';
+                el.dataset.idx = i;
+                const mat = swordSlots[i];
+
+                // Base Styles
+                el.style.borderStyle = 'solid';
                 el.style.opacity = '1';
                 el.style.pointerEvents = 'auto';
-                el.style.borderStyle = 'solid';
 
+                // Click Handler (Place / Remove)
+                el.onclick = () => {
+                    if (i >= currentLevel) return;
+
+                    if (selectedMaterial) {
+                        // Place
+                        swordSlots[i] = selectedMaterial;
+                        selectedMaterial = null; // Consume selection
+                        updateSelectionVisuals();
+                        rebuildSword();
+                        renderSlots();
+                    } else if (swordSlots[i]) {
+                        // Remove
+                        swordSlots[i] = null;
+                        rebuildSword();
+                        renderSlots();
+                    }
+                };
+
+                // Drag & Drop Handlers (Legacy)
+                el.ondragover = (e) => {
+                    e.preventDefault();
+                    if (i < currentLevel) el.style.borderColor = '#fff';
+                };
+                el.ondragleave = (e) => {
+                    if (i < currentLevel) el.style.borderColor = ''; // Let render fix it
+                };
+                el.ondrop = (e) => {
+                    e.preventDefault();
+                    if (i >= currentLevel) return;
+                    const key = e.dataTransfer.getData('mat');
+                    if (MATERIALS[key]) {
+                        swordSlots[i] = MATERIALS[key];
+                        rebuildSword();
+                        renderSlots();
+                    }
+                };
+
+                // State Rendering
                 if (i >= currentLevel) {
                     // LOCKED SLOT
                     el.classList.add('locked');
@@ -443,7 +565,6 @@
                     el.style.borderStyle = 'dotted';
                     el.style.borderColor = '#555';
                     el.innerHTML = '<span style="color:#555; font-size:9px;">未解锁</span>';
-                    // Ensure locked slots are empty in logic
                     if (swordSlots[i]) swordSlots[i] = null;
                 } else if (mat) {
                     // FILLED SLOT
@@ -454,12 +575,21 @@
                     // EMPTY SLOT
                     el.style.borderStyle = 'dashed';
                     el.innerHTML = '<span style="color:#444">空</span>';
+
+                    // Visual Hint for Selection
+                    if (selectedMaterial) {
+                        el.style.borderColor = '#2ecc71';
+                        el.style.boxShadow = '0 0 5px #2ecc71';
+                    }
                 }
+
+                // Append
+                slotContainer.appendChild(el);
             }
         }
 
         let combatTimer = 0;
-        const COMBAT_DURATION = 15; // Seconds
+        const COMBAT_DURATION = 10; // Seconds
 
         function setMode(m) {
             GAME_MODE = m;
@@ -533,12 +663,32 @@
                 }
             }
 
-            // WASD Movement
+            // Movement (WASD + Joystick)
             const moveSpeed = 5;
-            if (keys.w) player.y -= moveSpeed;
-            if (keys.s) player.y += moveSpeed;
-            if (keys.a) player.x -= moveSpeed;
-            if (keys.d) player.x += moveSpeed;
+            let moveDx = 0;
+            let moveDy = 0;
+
+            // Keyboard
+            if (keys.w) moveDy -= 1;
+            if (keys.s) moveDy += 1;
+            if (keys.a) moveDx -= 1;
+            if (keys.d) moveDx += 1;
+
+            // Joystick (Override/Add)
+            if (joystick.active) {
+                moveDx += joystick.dx;
+                moveDy += joystick.dy;
+            }
+
+            // Apply Movement
+            player.x += moveDx * moveSpeed;
+            player.y += moveDy * moveSpeed;
+
+            // Screen Bounds check
+            if (player.x < 0) player.x = 0;
+            if (player.x > CANVAS.width) player.x = CANVAS.width;
+            if (player.y < 0) player.y = 0;
+            if (player.y > CANVAS.height) player.y = CANVAS.height;
 
             if (nodes.length === 0) return;
 
@@ -788,7 +938,7 @@
             setMode('FORGE'); // Force back to forge to equip new slot
 
             // Scale Enemy
-            enemy.maxHp = 500 + (currentLevel * 1000); // Scale difficulty
+            enemy.maxHp = 500 + ((currentLevel - 1) * 800); // Scale difficulty
             enemy.hp = enemy.maxHp;
 
             // Reset sword position
@@ -818,7 +968,7 @@
             // Level 1: 800
             // Level 5: 800 + 4*600 = 3200 (4x Strength)
             return {
-                maxTorque: BASE_TORQUE + (currentLevel - 1) * 600,
+                maxTorque: BASE_TORQUE + (currentLevel - 1) * 800,
                 kp: BASE_KP + (currentLevel - 1) * 800
             };
         }
@@ -826,10 +976,18 @@
         function handleCombatFailure() {
             alert("时间耗尽！任务失败。\n退回至关卡 1。");
             currentLevel = 1;
+
+            // Explicitly clear high level slots
+            for (let i = 1; i < 5; i++) swordSlots[i] = null;
+
+            // Reset Enemy Scaling
+            enemy.maxHp = 500 + (currentLevel * 1000);
+
             // Update UI
             document.getElementById('level-display').innerText = `关卡 ${currentLevel} / ${MAX_LEVELS}`;
             renderSlots();
             setMode('FORGE');
+            resetSim(); // Rebuild sword physics
         }
 
         function draw() {
@@ -844,6 +1002,27 @@
                 CTX.font = 'bold 40px "Courier New"';
                 CTX.fillStyle = combatTimer < 10 ? '#e74c3c' : '#34495e'; // Red if low time
                 CTX.fillText(combatTimer.toFixed(1), CANVAS.width / 2, 80);
+            }
+
+            // Draw Joystick (If Active)
+            if (joystick.active) {
+                CTX.save();
+                // Base
+                CTX.beginPath();
+                CTX.arc(joystick.originX, joystick.originY, 50, 0, Math.PI * 2);
+                CTX.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                CTX.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                CTX.lineWidth = 2;
+                CTX.fill();
+                CTX.stroke();
+
+                // Knob
+                CTX.beginPath();
+                CTX.arc(joystick.x, joystick.y, 20, 0, Math.PI * 2);
+                CTX.fillStyle = 'rgba(52, 152, 219, 0.5)';
+                CTX.fill();
+                CTX.stroke();
+                CTX.restore();
             }
 
             // Shake
@@ -1004,9 +1183,15 @@
 
                 // HP Bar
                 CTX.fillStyle = '#444';
-                CTX.fillRect(enemy.x - enemy.w / 2, enemy.y - enemy.h / 2 - 10, enemy.w, 5);
+                CTX.fillRect(enemy.x - enemy.w / 2, enemy.y - enemy.h / 2 - 15, enemy.w, 10);
                 CTX.fillStyle = '#2ecc71';
-                CTX.fillRect(enemy.x - enemy.w / 2, enemy.y - enemy.h / 2 - 10, enemy.w * (enemy.hp / enemy.maxHp), 5);
+                CTX.fillRect(enemy.x - enemy.w / 2, enemy.y - enemy.h / 2 - 15, enemy.w * (enemy.hp / enemy.maxHp), 10);
+
+                // HP Text
+                CTX.fillStyle = '#fff';
+                CTX.font = 'bold 10px sans-serif';
+                CTX.textAlign = 'center';
+                CTX.fillText(`${Math.ceil(enemy.hp)} / ${enemy.maxHp}`, enemy.x, enemy.y - enemy.h / 2 - 6);
 
                 // Armor Label (Design Doc Requirement)
                 CTX.fillStyle = '#ccc';
